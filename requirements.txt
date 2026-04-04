@@ -1,0 +1,12 @@
+flask
+pyrogram
+tgcrypto
+aiohttp
+aiofiles
+yt_dlp
+ffmpeg
+pymongo
+python-dotenv
+cryptg
+tgcrypto
+humanize

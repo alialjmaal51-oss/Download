@@ -1,12 +1,4 @@
-flask
-pyrogram
-tgcrypto
-aiohttp
-aiofiles
-yt_dlp
-ffmpeg
-pymongo
+python-telegram-bot
+yt-dlp
+Flask
 python-dotenv
-cryptg
-tgcrypto
-humanize

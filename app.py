@@ -5,34 +5,12 @@ import time
 import asyncio
 import yt_dlp
 import re
-from threading import Thread
-from flask import Flask, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-
-# -------------------- تأمين المتغيرات --------------------
-from dotenv import load_dotenv
-load_dotenv()  # تحميل المتغيرات من ملف .env إن وجد
 
 TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", ""))
 
-# -------------------- إعداد Flask --------------------
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return jsonify({"status": "Bot is running", "message": "Use Telegram bot to download media"})
-
-@flask_app.route('/health')
-def health():
-    return jsonify({"status": "ok"})
-
-def run_flask():
-    port = int(os.getenv("PORT", 8080))
-    flask_app.run(host="0.0.0.0", port=port)
-
-# -------------------- باقي الكود كما هو مع بعض التحسينات --------------------
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -127,6 +105,7 @@ def get_video_formats(url):
             audio_formats = []
             
             for f in formats:
+                # تنسيق فيديو (يحتوي على فيديو)
                 if f.get('vcodec') != 'none':
                     resolution = f.get('resolution') or f.get('format_note') or 'Unknown'
                     size = f.get('filesize') or f.get('filesize_approx') or 0
@@ -137,6 +116,7 @@ def get_video_formats(url):
                         'size_str': format_size(size),
                         'type': 'video'
                     })
+                # تنسيق صوت فقط (سنحوله لـ mp3)
                 elif f.get('acodec') != 'none' and f.get('vcodec') == 'none':
                     size = f.get('filesize') or f.get('filesize_approx') or 0
                     audio_formats.append({
@@ -146,12 +126,14 @@ def get_video_formats(url):
                         'type': 'audio'
                     })
             
+            # ترتيب الفيديو حسب الدقة تنازلياً (أعلى دقة أولاً)
             def resolution_key(f):
                 res = f['resolution']
                 match = re.search(r'(\d+)', res)
                 return int(match.group(1)) if match else 0
             video_formats.sort(key=resolution_key, reverse=True)
             
+            # اختيار أفضل تنسيق صوت (أعلى جودة - أكبر حجم)
             if audio_formats:
                 audio_formats.sort(key=lambda x: x['size'], reverse=True)
                 best_audio = audio_formats[0]
@@ -192,6 +174,7 @@ async def download_with_format(url, format_id, is_audio, user_id, status_msg, co
             if is_audio:
                 filename = file_path + '.mp3'
                 if not os.path.exists(filename):
+                    # قد يكون الملف بصيغة أخرى مؤقتة
                     for f in os.listdir('downloads'):
                         if f.startswith(os.path.basename(file_path)) and f.endswith('.mp3'):
                             filename = os.path.join('downloads', f)
@@ -282,21 +265,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = await update.message.reply_text(TRANS[lang]['process'], reply_markup=InlineKeyboardMarkup(get_mandatory_buttons()))
     
+    # استخراج الصيغ
     video_formats, best_audio = get_video_formats(text)
     
     if not video_formats and not best_audio:
         await status_msg.edit_text(TRANS[lang]['error_generic'].format(error="No formats found"), reply_markup=InlineKeyboardMarkup(get_mandatory_buttons()))
         return
     
+    # بناء الأزرار
     keyboard = []
+    # إضافة صيغ الفيديو (أعلى جودة أولاً)
     for idx, fmt in enumerate(video_formats):
         button_text = f"🎬 {fmt['resolution']} - {fmt['size_str']}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"video_{idx}_{fmt['format_id']}")])
+    # إضافة صيغة mp3 إن وجدت
     if best_audio:
         button_text = f"🎵 mp3 - {best_audio['size_str']}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"audio_{best_audio['format_id']}")])
     
     keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_download")])
+    # تخزين data في context.user_data
     context.user_data['formats'] = {
         'url': text,
         'video_formats': video_formats,
@@ -318,6 +306,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     lang = get_user_lang(user_id) or 'en'
 
+    # التعامل مع أزرار القائمة الرئيسية
     if data == 'admin_panel':
         await admin_panel_view(update, context)
         await query.answer()
@@ -350,7 +339,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         return
 
+    # التعامل مع أزرار التحميل (صيغ الفيديو و mp3)
     if data.startswith('video_') or data.startswith('audio_'):
+        # استرجاع البيانات المخزنة
         formats_data = context.user_data.get('formats')
         if not formats_data or formats_data['user_id'] != user_id:
             await query.answer("Session expired. Please send the link again.", show_alert=True)
@@ -361,6 +352,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_msg_id = formats_data['status_msg_id']
         chat_id = formats_data['chat_id']
         
+        # تحديد الصيغة
         if data.startswith('video_'):
             parts = data.split('_')
             idx = int(parts[1])
@@ -368,15 +360,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_audio = False
             resolution = formats_data['video_formats'][idx]['resolution']
             await query.answer(f"Downloading video: {resolution}")
-        else:
+        else:  # audio_
             format_id = data.split('_')[1]
             is_audio = True
             await query.answer("Downloading MP3 audio")
         
+        # حذف الرسالة الحالية (الأزرار) وإرسال رسالة حالة جديدة
         await query.message.delete()
         status_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 Processing...", reply_markup=InlineKeyboardMarkup(get_mandatory_buttons()))
+        # تحديث status_msg_id في context
         context.user_data['formats']['status_msg_id'] = status_msg.message_id
         
+        # بدء التحميل في خلفية (async)
         asyncio.create_task(download_with_format(url, format_id, is_audio, user_id, status_msg, context))
         return
 
@@ -387,6 +382,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del context.user_data['formats']
         return
 
+    # باقي الأزرار الإدارية
     if user_id != ADMIN_ID:
         await query.answer("⛔ Access Denied", show_alert=True)
         return
@@ -488,17 +484,11 @@ if __name__ == '__main__':
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     init_db()
-    
-    # تشغيل Flask في thread منفصل
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # تشغيل البوت (polling)
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin_panel_view))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND) & filters.User(ADMIN_ID) & (filters.Regex(r'^\d+$') | filters.ALL), admin_input_handler), group=1)
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message), group=0)
-    print("Bot is running with format selection and Flask server...")
+    print("Bot is running with format selection...")
     application.run_polling()

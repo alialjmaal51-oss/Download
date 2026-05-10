@@ -8,9 +8,8 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
-TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_ID = int(os.getenv("ADMIN_ID", ""))
-
+TOKEN = os.getenv("TOKEN", "")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "5570615802"))
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -72,7 +71,7 @@ def get_db_connection():
     return sqlite3.connect(DB_NAME)
 
 def get_mandatory_buttons():
-    return [[InlineKeyboardButton("𓄼𝗗𝗲𝘃𓄹", url="https://t.me/avetaar")], [InlineKeyboardButton("𓄼𝗦𝗼𝘂𝗿𝗰𝗲𓄹", url="https://t.me/+rawFtlErSFRlZjhk")]]
+    return [[InlineKeyboardButton("𓄼𝗗𝗲𝘃𓄹", url="https://t.me/albashekaljmaal2")], [InlineKeyboardButton("𓄼𝗦𝗼𝘂𝗿𝗰𝗲𓄹", url="https://t.me/albashekaljmaal")]]
 
 def get_user_lang(user_id):
     conn = get_db_connection()
